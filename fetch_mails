@@ -23,7 +23,33 @@ use base 'Template::Declare';
 
 =cut
 
+
 template mail_list => sub {
+    my ($self, $original_title, $url, $mails) = @_;
+    p { 
+        "Mail content was generated from";
+        a { 
+            attr { href is $url };
+            $url;
+        }
+    };
+
+    h1 { $original_title };
+
+    for my $mail (@$mails) {
+        h2 { $mail->{title} }
+        a { attr { href is $mail->{uri} }; $mail->{uri} }
+        p {
+            em { "From" };
+            i { $mail->{from} };
+        }
+        pre {
+            $mail->{body};
+        };
+    }
+};
+
+template mail => sub {
     my ($self, $original_title, $url, $mails) = @_;
     html {
         head {
@@ -32,27 +58,7 @@ template mail_list => sub {
             meta { attr { charset => "UTF-8" } }
         }
         body {
-            p { 
-                "Mail content was generated from";
-                a { 
-                    attr { href is $url };
-                    $url;
-                }
-            };
-
-            h1 { $original_title };
-
-            for my $mail (@$mails) {
-                h2 { $mail->{title} }
-                a { attr { href is $mail->{uri} }; $mail->{uri} }
-                p {
-                    em { "From" };
-                    i { $mail->{from} };
-                }
-                pre {
-                    $mail->{body};
-                };
-            }
+            show 'mail_list', $original_title, $url, $mails;
         }
     }
 };
@@ -63,11 +69,12 @@ use WWW::Mechanize;
 use Mojo::DOM;
 use HTML::Entities;
 use Getopt::Long;
+use Template::Declare;
 use 5.18.0;
 
 my $max_entries = 0;
 my $output_file = "mail.html";
-my $template_name = 'mail_list';
+my $template_name = 'mail';
 
 GetOptions("max=i" => \$max_entries,
             "output=s"   => \$output_file,
@@ -113,13 +120,27 @@ FOLLOWING: while ($following_thread) {
     }
 }
 
-
-# Generate the indexed mails
-use Template::Declare;
 Template::Declare->init( dispatch_to => ['Templates'] );
-my $html = Template::Declare->show($template_name, $original_title, $url, \@mails);
 
-say "Writing generated HTML to $output_file...";
-open FH, ">", $output_file;
-print FH $html;
-close FH;
+if ($output_file =~ /\.html?$/i) {
+    my $html = Template::Declare->show($template_name, $original_title, $url, \@mails);
+    say "Writing generated HTML to $output_file...";
+    open FH, ">", $output_file;
+    print FH $html;
+    close FH;
+} elsif ($output_file =~ /\.mobi$/i) {
+    use EBook::MOBI;
+    my $book = EBook::MOBI->new();
+
+    # give some meta information about this book
+    $book->set_filename($output_file);
+    $book->set_title($original_title);
+    $book->set_author('Perl Script');
+    $book->set_encoding(':encoding(UTF-8)');
+
+    my $html = Template::Declare->show('mail_list', $original_title, $url, \@mails);
+    $book->add_mhtml_content($html);
+    $book->make();
+    $book->save();
+}
+
