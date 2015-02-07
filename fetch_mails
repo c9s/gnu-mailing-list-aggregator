@@ -1,0 +1,125 @@
+#!/usr/bin/env perl
+=pod
+
+=head1 fetch_mails.pl
+
+    perl fetch_mails --output=mail.html https://gcc.gnu.org/ml/jit/2013-q4/msg00023.html
+
+=cut
+package Templates;
+
+use Template::Declare::Tags; # defaults to 'HTML'
+use base 'Template::Declare';
+
+=pod
+
+    my $output = "";
+    $output .= "<p>" . 'Mail content was parsed from <a href="' . $url . '">' . $url . "</a>\n" . "</p>";
+    for my $mail (@mails) {
+        $output .= "<h1>" . $mail->{title} . "</h1>\n";
+        $output .= "<div>From: " . encode_entities($mail->{from}) . "</div>\n";
+        $output .= "<pre>\n" . encode_entities($mail->{body}) . "\n</pre>\n";
+    }
+
+=cut
+
+template mail_list => sub {
+    my ($self, $original_title, $url, $mails) = @_;
+    html {
+        head {
+            title { $original_title };
+            # <meta charset="UTF-8" />
+            meta { attr { charset => "UTF-8" } }
+        }
+        body {
+            p { 
+                "Mail content was generated from";
+                a { 
+                    attr { href is $url };
+                    $url;
+                }
+            };
+
+            h1 { $original_title };
+
+            for my $mail (@$mails) {
+                h2 { $mail->{title} }
+                a { attr { href is $mail->{uri} }; $mail->{uri} }
+                p {
+                    em { "From" };
+                    i { $mail->{from} };
+                }
+                pre {
+                    $mail->{body};
+                };
+            }
+        }
+    }
+};
+
+package main;
+use utf8;
+use WWW::Mechanize;
+use Mojo::DOM;
+use HTML::Entities;
+use Getopt::Long;
+use 5.18.0;
+
+my $max_entries = 0;
+my $output_file = "mail.html";
+my $template_name = 'mail_list';
+
+GetOptions("max=i" => \$max_entries,
+            "output=s"   => \$output_file,
+            "template=s"  => \$template_name);
+
+my $mech = WWW::Mechanize->new();
+my $url = shift;
+
+my @mails = ();
+
+$mech->get($url);
+
+my $original_title = $mech->title();
+my $following_thread = 1;
+
+FOLLOWING: while ($following_thread) {
+    my $content = $mech->content();
+    my $dom = Mojo::DOM->new($content);
+    my $body = $dom->find('pre')->first->text;
+
+    my $mail = { title => $mech->title(), body => $body, uri => $mech->uri() };
+
+    for my $em ($dom->find('ul em')->each) {
+        if ($em->text =~ /from/i) {
+            $mail->{from} = $em->parent->all_text;
+            $mail->{from} =~ s/From:\s*//i;
+        }
+    }
+    push @mails, $mail;
+
+    say $mech->title(), " (", scalar(@mails) , ")";
+
+    if ($max_entries > 0 && scalar(@mails) >= $max_entries) {
+        last FOLLOWING;
+    }
+
+    $mech->follow_link( text_regex => qr{Thread Next}i );
+    my $next_title = $mech->title();
+    if ($next_title !~ m/$original_title/) {
+        $following_thread = 0;
+        say "Thread ended, skipping...";
+        last FOLLOWING;
+    }
+}
+
+
+# Generate the indexed mails
+use Template::Declare;
+Template::Declare->init( dispatch_to => ['Templates'] );
+my $html = Template::Declare->show($template_name, $original_title, $url, \@mails);
+
+say "Writing generated HTML to $output_file...";
+open FH, ">", $output_file;
+print FH $html;
+close FH;
