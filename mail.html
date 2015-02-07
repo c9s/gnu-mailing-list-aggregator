@@ -1,0 +1,694 @@
+
+<html>
+ <head>
+  <title>GCC JIT vs others JIT ....</title>
+  <meta charset="UTF-8" />
+ </head>
+ <body>
+  <p>
+   <a href="https://gcc.gnu.org/ml/jit/2013-q4/msg00023.html">https://gcc.gnu.org/ml/jit/2013-q4/msg00023.html</a>
+  </p>
+  <h1>GCC JIT vs others JIT ....</h1>
+  <h2>GCC JIT vs others JIT ....</h2>
+  <a href="https://gcc.gnu.org/ml/jit/2013-q4/msg00023.html">https://gcc.gnu.org/ml/jit/2013-q4/msg00023.html</a>
+  <p>
+   <em>From</em>
+   <i>Paulo César Pereira de Andrade &lt;paulo.cesar.pereira.de.andrade@gmail.com&gt;</i>
+  </p>
+  <pre>Hello David Malcom and all,
+
+I am trying to understand what are the conceptual differences between
+GCC JIT &#40;when it will be mature enough&#41; and other JIT libraries like GNU
+lightning  or LLVM
+ or GNU libjit  from
+the point of view of the developer using the JIT library.
+
+GNU lightning is probably much lower level than GCC JIT. It probably has
+the advantage of generating quickly rather slow machine code. It mostly
+gives a small set of register like variables.
+
+LLVM probably is the equivalent competitor, since both GCC JIT and LLVM
+are derived from ahead of time compilers &#40;of course, for LLVM it was
+initially not much true&#41;. So probably both GCC JIT and LLVM would
+produce, a bit slowly, some good machine code. &#40;In particular because
+GCC JIT is, AFAIK, emitting assembly code&#41;.
+
+BTW, I have no idea if GCC JIT has some option to set the optimization
+level.
+
+Libjit seems superficially similar in terms of API &#40;to both LLVM and GCC
+JIT&#41;: it offers a mini-C like intermediate representation.
+
+I also believe that GCC JIT is probably the JIT library which runs on
+much more processors than others &#40;because GCC has a wide set of
+targets&#41;.
+
+David, do you think that a libit based JIT engine could quickly switch
+to GCC JIT once it has matured? I am guessing it would be quite easy.
+
+Cheers
+-- 
+Basile STARYNKEVITCH         
+email: basile&lt;at&gt;starynkevitch&lt;dot&gt;net mobile: +33 6 8501 2359
+8, rue de la Faiencerie, 92340 Bourg La Reine, France
+*** opinions {are only mine, sont seulement les miennes} ***
+
+
+</pre>
+  <h2>Re: GCC JIT vs others JIT ....</h2>
+  <a href="https://gcc.gnu.org/ml/jit/2013-q4/msg00024.html">https://gcc.gnu.org/ml/jit/2013-q4/msg00024.html</a>
+  <p>
+   <em>From</em>
+   <i>Basile Starynkevitch &lt;basile@starynkevitch.net&gt;</i>
+  </p>
+  <pre>On Tue, 2013-10-22 at 20:30 +0200, Basile Starynkevitch wrote:
+&gt; Hello David Malcom and all,
+
+Hi Basile.
+
+&gt; I am trying to understand what are the conceptual differences between
+&gt; GCC JIT &#40;when it will be mature enough&#41; and other JIT libraries like GNU
+&gt; lightning  or LLVM
+&gt;  or GNU libjit  from
+&gt; the point of view of the developer using the JIT library.
+
+I was aware of lightning and LLVM; I wasn&#39;t aware of libjit - thanks for
+the link.
+
+My interest is in modularising GCC&#39;s code, and I&#39;ve been working for the
+last few years on dynamic language runtimes &#40;for Python&#41;, so turning GCC
+into being usable for JIT use-cases is of great interest to me.
+
+I tend to prefer fixing existing code over rewriting, hence my
+preference for generalizing GCC to cover JIT workloads, over having a
+separate JIT project: I&#39;d prefer to have code shared between the
+ahead-of-time compiler and the JIT compiler.  But other people may feel
+differently, of course.
+
+&gt; GNU lightning is probably much lower level than GCC JIT. It probably has
+&gt; the advantage of generating quickly rather slow machine code. It mostly
+&gt; gives a small set of register like variables.
+
+&gt;From what I&#39;ve seen of lightning it does indeed seem to have a much
+lower level API compared to libgccjit.  It&#39;s probably faster: certainly
+libgccjit isn&#39;t fast yet - for example, internally we&#39;re writing out
+a .s file to disk, and then having to invoke other tools as subprocesses
+to get that into a form we can execute.   I hope to eventually eliminate
+that kludge &#40;e.g. turn the GNU assembler into a library and use it
+in-process, or perhaps even have GCC&#39;s RTL level directly emit machine
+code instead of asm&#41;.  I deliberately hid the kludge behind the API, so
+it should be possible to fix it without affecting ABI.
+
+It&#39;s possible to see timing data by setting the bool option
+
+   GCC_JIT_BOOL_OPTION_DUMP_SUMMARY
+
+on the context; this is &#40;very&#41; roughly equivalent to running cc1 without
+the -quiet option.
+
+&gt; LLVM probably is the equivalent competitor, since both GCC JIT and LLVM
+&gt; are derived from ahead of time compilers &#40;of course, for LLVM it was
+&gt; initially not much true&#41;. So probably both GCC JIT and LLVM would
+&gt; produce, a bit slowly, some good machine code. &#40;In particular because
+&gt; GCC JIT is, AFAIK, emitting assembly code&#41;.
+&#40;nods&#41;   Yes, as described above, libgccjit does currently go through .s
+files internally.
+&#40;my understanding of LLVM&#39;s origins are that it was for an ahead-of-time
+compiler for doing a radical whole-program optimization that implements
+pointer compression automatically&#41;
+
+&gt; BTW, I have no idea if GCC JIT has some option to set the optimization
+&gt; level.
+
+It does:
+
+  gcc_jit_context_set_int_option &#40;ctxt,        
+                                  GCC_JIT_INT_OPTION_OPTIMIZATION_LEVEL,
+                                  3&#41;;
+is equivalent to &#34;-O3&#34; i.e. -O0 through -O3 are selectable.
+
+0 is the default.   The API is simple for now.  I can add options for
+enabling specific optimizations if people want, perhaps customization of
+the pass pipeline &#40;I implemented the pass_manager code in gcc 4.9 which
+may help us to support such a use-case&#41;.
+
+&gt; Libjit seems superficially similar in terms of API &#40;to both LLVM and GCC
+&gt; JIT&#41;: it offers a mini-C like intermediate representation.
+
+Yes, looking at the API it looks similar to the API I came up with,
+though I have rvalues vs lvalues, and there are no explicit blocks, only
+label placement &#40;you can always implement blocks by placing labels&#41;.
+
+&gt; I also believe that GCC JIT is probably the JIT library which runs on
+&gt; much more processors than others &#40;because GCC has a wide set of
+&gt; targets&#41;.
+
+I&#39;d agree with that, though I&#39;m speculating.  This is one of the reasons
+for the very high-level nature of the API.
+
+I&#39;m conscious that I&#39;ve only used the API to implement a method JIT, not
+a tracing JIT; we may need additional constructs to help deal with the
+kinds of dynamic code patching that a tracing JIT needs to do.
+
+&gt; David, do you think that a libit based JIT engine could quickly switch
+&gt; to GCC JIT once it has matured? I am guessing it would be quite easy.
+
+I think so.
+
+Out of interest, are you thinking of using this for MELT?  i.e.
+embedding libgccjit inside a gcc plugin?  If so, I wonder if there could
+be nasty interactions between the two copies of the GCC code?  libgccjit
+has a symbol map that hides everything other than the 50 or so gcc_jit_*
+entrypoints, so hopefully the two copies of the code would peacefully
+coexist within the same address space - but it sounds like something to
+be wary of.
+
+Hope this is helpful
+Dave
+
+</pre>
+  <h2>Re: GCC JIT vs others JIT ....</h2>
+  <a href="https://gcc.gnu.org/ml/jit/2013-q4/msg00025.html">https://gcc.gnu.org/ml/jit/2013-q4/msg00025.html</a>
+  <p>
+   <em>From</em>
+   <i>David Malcolm &lt;dmalcolm@redhat.com&gt;</i>
+  </p>
+  <pre>On Wed, 2013-10-23 at 00:24 -0400, David Malcolm wrote:
+&gt; Out of interest, are you thinking of using this for MELT?  i.e.
+&gt; embedding libgccjit inside a gcc plugin?  If so, I wonder if there could
+&gt; be nasty interactions between the two copies of the GCC code?  
+
+
+
+&#40;for other readers, MELT refers to  a high level
+domain specific language to extend GCC; MELT is a GCC plugin -
+generating C++ code fit into GCC&#41;
+
+Yes and no.
+
+Indeed, I am thinking of LIBJIT or GCC JIT in something remotely related
+to MELT, but that won&#39;t be in the MELT plugin.
+
+I am dreaming of a MELT monitor, which would be an *external* process to
+MELT and will :
+
+    give a web interface to MELT, displaying code using Code Mirror
+ 
+
+    communicate asynchronously with compilations using the MELT plugin
+
+    store some persistent information
+
+
+That MELT monitor could use JIT techniques &#40;but it is a separate process
+from cc1 or cc1plus -fplugin=melt ....&#41;. But there won&#39;t be nasty
+interactions between the monitor and the cc1 because they are separate
+processes - with some bi-directional pipes to communicate...
+
+all this is just a dream today.
+-- 
+Basile STARYNKEVITCH         
+email: basile&lt;at&gt;starynkevitch&lt;dot&gt;net mobile: +33 6 8501 2359
+8, rue de la Faiencerie, 92340 Bourg La Reine, France
+*** opinions {are only mine, sont seulement les miennes} ***
+
+
+</pre>
+  <h2>Re: GCC JIT vs others JIT ....</h2>
+  <a href="https://gcc.gnu.org/ml/jit/2013-q4/msg00027.html">https://gcc.gnu.org/ml/jit/2013-q4/msg00027.html</a>
+  <p>
+   <em>From</em>
+   <i>Basile Starynkevitch &lt;basile@starynkevitch.net&gt;</i>
+  </p>
+  <pre>2013/10/22 Basile Starynkevitch &lt;basile@starynkevitch.net&gt;:
+&gt; Hello David Malcom and all,
+&gt;
+&gt; I am trying to understand what are the conceptual differences between
+&gt; GCC JIT &#40;when it will be mature enough&#41; and other JIT libraries like GNU
+&gt; lightning  or LLVM
+&gt;  or GNU libjit  from
+&gt; the point of view of the developer using the JIT library.
+&gt;
+&gt; GNU lightning is probably much lower level than GCC JIT. It probably has
+&gt; the advantage of generating quickly rather slow machine code. It mostly
+&gt; gives a small set of register like variables.
+
+  GNU lightning does not use abstract &#34;values&#34;, that may be either a
+register or an immediate, it is required to explicitly state if the argument
+is a register or an immediate, e.g. jit_addr&#40;JIT_R0, JIT_R1, JIT_R2&#41;
+and jit_addi&#40;JIT_R0, JIT_R1, 2&#41;. When using immediates, they are
+always the last argument.
+
+  GNU lightning major limitations are:
+o Can call varargs but does not create varargs jit functions
+o No dynamic alloca
+o No aggregate arguments/return by value
+
+  The major advantages are:
+o Self contained, but binutils support is advised otherwise without
+  disassembly, debugging may be quite difficult.
+o Tailored for operations that need to know if there is overflow/carry
+  and have the values ready &#40;carry/borrow only need to know about,
+  but multiplication high word and division remainder are quite useful&#41;.
+
+  For starters, I would suggest looking at lightning&#39;s check/*.tst files,
+for an overview of how to generate code. For example, bp.tst for
+the classic recursive Fibonacci and fib.tst for the interactive one.
+Other tests may be complex due to using the C preprocessor to
+generate complex macros to brute force test all/most register/value
+combinations.
+
+  A more complex, still WIP, use case example of lightning is
+ &#40;lib/oemit*c files are the lightning
+interfaces&#41;
+
+  Well, enough GNU lightning advertising :-&#41;
+
+&gt; LLVM probably is the equivalent competitor, since both GCC JIT and LLVM
+&gt; are derived from ahead of time compilers &#40;of course, for LLVM it was
+&gt; initially not much true&#41;. So probably both GCC JIT and LLVM would
+&gt; produce, a bit slowly, some good machine code. &#40;In particular because
+&gt; GCC JIT is, AFAIK, emitting assembly code&#41;.
+&gt;
+&gt; BTW, I have no idea if GCC JIT has some option to set the optimization
+&gt; level.
+&gt;
+&gt; Libjit seems superficially similar in terms of API &#40;to both LLVM and GCC
+&gt; JIT&#41;: it offers a mini-C like intermediate representation.
+&gt;
+&gt; I also believe that GCC JIT is probably the JIT library which runs on
+&gt; much more processors than others &#40;because GCC has a wide set of
+&gt; targets&#41;.
+&gt;
+&gt; David, do you think that a libit based JIT engine could quickly switch
+&gt; to GCC JIT once it has matured? I am guessing it would be quite easy.
+&gt;
+&gt; Cheers
+&gt; --
+&gt; Basile STARYNKEVITCH         
+&gt; email: basile&lt;at&gt;starynkevitch&lt;dot&gt;net mobile: +33 6 8501 2359
+&gt; 8, rue de la Faiencerie, 92340 Bourg La Reine, France
+&gt; *** opinions {are only mine, sont seulement les miennes} ***
+
+
+Paulo
+
+</pre>
+  <h2>Re: GCC JIT vs others JIT ....</h2>
+  <a href="https://gcc.gnu.org/ml/jit/2013-q4/msg00032.html">https://gcc.gnu.org/ml/jit/2013-q4/msg00032.html</a>
+  <p>
+   <em>From</em>
+   <i>Paulo César Pereira de Andrade &lt;paulo.cesar.pereira.de.andrade@gmail.com&gt;</i>
+  </p>
+  <pre>On Wed, 2013-10-23 at 13:22 -0200, Paulo CÃsar Pereira de Andrade wrote:
+&gt; 
+&gt;   A more complex, still WIP, use case example of lightning is
+&gt;  &#40;lib/oemit*c files are the lightning
+&gt; interfaces&#41;
+
+
+Thanks for your message Paulo.
+
+Actually, of all the JIT libraries I have cited, GNU lightning is
+probabnly the one I am the more familiar with. Long time ago, I coded
+ocamljit - a small JIT for ocaml bytecode - in it &#40;but the current
+ocamljit2 is probably unrelated to it&#41;.
+
+
+I&#39;m interested by your OWL work &#40;did you know that as a computer
+language, OWL means quite often
+ ?&#41;
+
+But I am not able to find out some small examples of OWL code and/or
+some syntax &#40;and semantic&#41; definition of your OWL. Or is OWL a JIT for
+full C &#40;e.g. able to interpret any C program&#41;?
+
+How do you code fibionacci and hello world in OWL? How do you code a
+program reading a list of integers and computing the list of their
+square?
+
+And back to David Malcolm&#39;s GCC JIT, would you find easy to re-implement
+OWL in it?
+
+Cheers.
+
+-- 
+Basile STARYNKEVITCH         
+email: basile&lt;at&gt;starynkevitch&lt;dot&gt;net mobile: +33 6 8501 2359
+8, rue de la Faiencerie, 92340 Bourg La Reine, France
+*** opinions {are only mine, sont seulement les miennes} ***
+
+
+</pre>
+  <h2>Re: GCC JIT vs others JIT ....</h2>
+  <a href="https://gcc.gnu.org/ml/jit/2013-q4/msg00033.html">https://gcc.gnu.org/ml/jit/2013-q4/msg00033.html</a>
+  <p>
+   <em>From</em>
+   <i>Basile Starynkevitch &lt;basile@starynkevitch.net&gt;</i>
+  </p>
+  <pre>2013/10/23 Basile Starynkevitch &lt;basile@starynkevitch.net&gt;:
+&gt; On Wed, 2013-10-23 at 13:22 -0200, Paulo César Pereira de Andrade wrote:
+&gt;&gt;
+&gt;&gt;   A more complex, still WIP, use case example of lightning is
+&gt;&gt;  &#40;lib/oemit*c files are the lightning
+&gt;&gt; interfaces&#41;
+&gt;
+&gt;
+&gt; Thanks for your message Paulo.
+
+  Hi Basile,
+
+&gt; Actually, of all the JIT libraries I have cited, GNU lightning is
+&gt; probabnly the one I am the more familiar with. Long time ago, I coded
+&gt; ocamljit - a small JIT for ocaml bytecode - in it &#40;but the current
+&gt; ocamljit2 is probably unrelated to it&#41;.
+
+  I did significant changes to lightning when I became maintainer of
+it. Unless you used private interfaces &#40;previously it was implemented
+all in one pass as C macros, so, could not hide internals&#41;, basically
+the main difference is that now function arguments are passed left
+to right, and there is a large set of new ports.
+
+&gt; I&#39;m interested by your OWL work &#40;did you know that as a computer
+&gt; language, OWL means quite often
+&gt;  ?&#41;
+
+  I did not know about it.
+
+&gt; But I am not able to find out some small examples of OWL code and/or
+&gt; some syntax &#40;and semantic&#41; definition of your OWL. Or is OWL a JIT for
+&gt; full C &#40;e.g. able to interpret any C program&#41;?
+
+  It is a C/C++ like language, with static and dynamic typing. The only
+examples so far are in check/test, that you can cut&#38;paste under gdb,
+or just run &#34;./owl check/test&#34; to run all examples in a row. The file is quite
+large, and growing, to help stress test the current implementation.
+
+&gt; How do you code fibionacci and hello world in OWL? How do you code a
+&gt; program reading a list of integers and computing the list of their
+&gt; square?
+
+  It is still in the early stages of implementation, there are still too many
+incomplete features, so, the best bet is to look in check/test that is
+being used to slowly test code generation and correct code generation
+bugs. But the hello world test is easy :-&#41;
+
+$ echo &#39;print&#40;&#34;hello world!\n&#34;&#41;;&#39; | ./owl
+hello world!
+
+  I promise to add working Fibonacci examples to check/test in my next
+commit :-&#41; There is an internal stream implementation, but only &#34;exported&#34;
+so far is the print builtin, that prints to stdout, so the example of an integer
+list would need to have the input encoded in a vector for now.
+
+&gt; And back to David Malcolm&#39;s GCC JIT, would you find easy to re-implement
+&gt; OWL in it?
+
+  My interest is in  writing a managed language with dynamic typing,
+and static typing for faster execution. But porting to gcc jit should not
+be much different from the initial code I am writing, mainly to exercise
+lightning, that would &#34;optimize&#34; when types are know, check for overflow
+when it can happen and otherwise fallback to calling functions to
+implement the vm primitives.
+
+&gt; Cheers.
+&gt;
+&gt; --
+&gt; Basile STARYNKEVITCH         
+&gt; email: basile&lt;at&gt;starynkevitch&lt;dot&gt;net mobile: +33 6 8501 2359
+&gt; 8, rue de la Faiencerie, 92340 Bourg La Reine, France
+&gt; *** opinions {are only mine, sont seulement les miennes} ***
+
+Paulo
+
+</pre>
+  <h2>Re: GCC JIT vs others JIT ....</h2>
+  <a href="https://gcc.gnu.org/ml/jit/2013-q4/msg00041.html">https://gcc.gnu.org/ml/jit/2013-q4/msg00041.html</a>
+  <p>
+   <em>From</em>
+   <i>Paulo César Pereira de Andrade &lt;paulo.cesar.pereira.de.andrade@gmail.com&gt;</i>
+  </p>
+  <pre>On Wed, 2013-10-23 at 19:05 -0200, Paulo CÃsar Pereira de Andrade wrote:
+[...]
+
+&gt;   It is a C/C++ like language, with static and dynamic typing. The only
+&gt; examples so far are in check/test, that you can cut&#38;paste under gdb,
+&gt; or just run &#34;./owl check/test&#34; to run all examples in a row. The file is quite
+&gt; large, and growing, to help stress test the current implementation.
+
+Is OWL compiling a function at a time &#40;a &#34;method JIT&#34;&#41;, or are you
+tracing execution paths and then optimizing hot loops &#40;a &#34;tracing JIT&#34;&#41;?
+&#40;I&#39;ve only attempted the former so far with my work&#41;
+
+[...]
+
+&gt;   My interest is in  writing a managed language with dynamic typing,
+&gt; and static typing for faster execution. But porting to gcc jit should not
+&gt; be much different from the initial code I am writing, mainly to exercise
+&gt; lightning, that would &#34;optimize&#34; when types are know, check for overflow
+&gt; when it can happen and otherwise fallback to calling functions to
+&gt; implement the vm primitives.
+
+BTW, does lightning support self-modifying code?   &#40;e.g. for doing
+inline caching of attribute lookup&#41;.
+
+Thanks
+Dave
+
+</pre>
+  <h2>Re: GCC JIT vs others JIT ....</h2>
+  <a href="https://gcc.gnu.org/ml/jit/2013-q4/msg00042.html">https://gcc.gnu.org/ml/jit/2013-q4/msg00042.html</a>
+  <p>
+   <em>From</em>
+   <i>David Malcolm &lt;dmalcolm@redhat.com&gt;</i>
+  </p>
+  <pre>On Thu, 2013-10-24 at 14:53 -0400, David Malcolm wrote:
+[...]
+&gt; BTW, does lightning support self-modifying code?   &#40;e.g. for doing
+&gt; inline caching of attribute lookup&#41;.
+
+But GCC does not &#40;support self-modifying code&#41;. How would you make GCC
+JIT accept it if GCC does not?
+
+Cheers
+
+-- 
+Basile STARYNKEVITCH         
+email: basile&lt;at&gt;starynkevitch&lt;dot&gt;net mobile: +33 6 8501 2359
+8, rue de la Faiencerie, 92340 Bourg La Reine, France
+*** opinions {are only mine, sont seulement les miennes} ***
+
+
+</pre>
+  <h2>Re: GCC JIT vs others JIT ....</h2>
+  <a href="https://gcc.gnu.org/ml/jit/2013-q4/msg00044.html">https://gcc.gnu.org/ml/jit/2013-q4/msg00044.html</a>
+  <p>
+   <em>From</em>
+   <i>Basile Starynkevitch &lt;basile@starynkevitch.net&gt;</i>
+  </p>
+  <pre>On Thu, 2013-10-24 at 21:53 +0200, Basile Starynkevitch wrote:
+&gt; On Thu, 2013-10-24 at 14:53 -0400, David Malcolm wrote:
+&gt; [...]
+&gt; &gt; BTW, does lightning support self-modifying code?   &#40;e.g. for doing
+&gt; &gt; inline caching of attribute lookup&#41;.
+&gt; 
+&gt; But GCC does not &#40;support self-modifying code&#41;. How would you make GCC
+&gt; JIT accept it if GCC does not?
+
+By making GCC handle it ;&#41;
+
+There may be things that are reasonable to do in a JIT that make little
+sense for an AOT compiler, and self-modifying code is one of them, e.g.
+for conditionals that almost always take one branch such as for
+guard-style conditionals inside a loop, where we&#39;re recording the
+assumptions about the types we&#39;re working on, with a 
+   if &#40;expr != expected_value&#41;
+and we don&#39;t expect the non-equal branch to ever be followed, but for
+correctness it must exist, and we need to be able to update
+expected_value.  In such a case, we want the most efficient check for
+the commonly-executed case, and hardcoding expected_value inside the
+compare instruction and then directly modifying it in place on the rare
+chance it changes might be most efficient.
+
+These are vague, long-term ideas, of course.
+
+</pre>
+  <h2>Re: GCC JIT vs others JIT ....</h2>
+  <a href="https://gcc.gnu.org/ml/jit/2013-q4/msg00048.html">https://gcc.gnu.org/ml/jit/2013-q4/msg00048.html</a>
+  <p>
+   <em>From</em>
+   <i>David Malcolm &lt;dmalcolm@redhat.com&gt;</i>
+  </p>
+  <pre>2013/10/24 David Malcolm &lt;dmalcolm@redhat.com&gt;:
+&gt; On Wed, 2013-10-23 at 19:05 -0200, Paulo César Pereira de Andrade wrote:
+&gt; [...]
+&gt;
+&gt;&gt;   It is a C/C++ like language, with static and dynamic typing. The only
+&gt;&gt; examples so far are in check/test, that you can cut&#38;paste under gdb,
+&gt;&gt; or just run &#34;./owl check/test&#34; to run all examples in a row. The file is quite
+&gt;&gt; large, and growing, to help stress test the current implementation.
+&gt;
+&gt; Is OWL compiling a function at a time &#40;a &#34;method JIT&#34;&#41;, or are you
+&gt; tracing execution paths and then optimizing hot loops &#40;a &#34;tracing JIT&#34;&#41;?
+&gt; &#40;I&#39;ve only attempted the former so far with my work&#41;
+
+  For now it is more of a test environment for complex code generation
+using lightning. It actually &#34;compiles&#34; a full owl script as a single C
+callable function, uses its own stack, and does a precise mark&#38;sweep
+gc. Lightning itself can be used for either, as it only provides a kind of
+portable, minimal assembly.
+
+&gt; [...]
+&gt;
+&gt;&gt;   My interest is in  writing a managed language with dynamic typing,
+&gt;&gt; and static typing for faster execution. But porting to gcc jit should not
+&gt;&gt; be much different from the initial code I am writing, mainly to exercise
+&gt;&gt; lightning, that would &#34;optimize&#34; when types are know, check for overflow
+&gt;&gt; when it can happen and otherwise fallback to calling functions to
+&gt;&gt; implement the vm primitives.
+&gt;
+&gt; BTW, does lightning support self-modifying code?   &#40;e.g. for doing
+&gt; inline caching of attribute lookup&#41;.
+
+  No. Lightning does mmap memory for the jit, attempting to waste as
+few as possible memory, and after code generation it does mprotect
+it removing write permission. Also does some voodoo for architectures
+that need complex sequences to flush the code cache; currently
+it requires gcc as the compiler, but libgcc __clear_cache does not
+work on all ports.
+
+&gt; Thanks
+&gt; Dave
+
+Paulo
+
+</pre>
+  <h2>Re: GCC JIT vs others JIT ....</h2>
+  <a href="https://gcc.gnu.org/ml/jit/2013-q4/msg00049.html">https://gcc.gnu.org/ml/jit/2013-q4/msg00049.html</a>
+  <p>
+   <em>From</em>
+   <i>Paulo César Pereira de Andrade &lt;paulo.cesar.pereira.de.andrade@gmail.com&gt;</i>
+  </p>
+  <pre>On Fri, 2013-10-25 at 13:15 -0200, Paulo CÃsar Pereira de Andrade wrote:
+&gt; 2013/10/24 David Malcolm &lt;dmalcolm@redhat.com&gt;:
+&gt; &gt; On Wed, 2013-10-23 at 19:05 -0200, Paulo CÃsar Pereira de Andrade wrote:
+&gt; &gt; [...]
+&gt; &gt;
+&gt; &gt;&gt;   It is a C/C++ like language, with static and dynamic typing. The only
+&gt; &gt;&gt; examples so far are in check/test, that you can cut&#38;paste under gdb,
+&gt; &gt;&gt; or just run &#34;./owl check/test&#34; to run all examples in a row. The file is quite
+&gt; &gt;&gt; large, and growing, to help stress test the current implementation.
+&gt; &gt;
+&gt; &gt; Is OWL compiling a function at a time &#40;a &#34;method JIT&#34;&#41;, or are you
+&gt; &gt; tracing execution paths and then optimizing hot loops &#40;a &#34;tracing JIT&#34;&#41;?
+&gt; &gt; &#40;I&#39;ve only attempted the former so far with my work&#41;
+&gt; 
+&gt;   For now it is more of a test environment for complex code generation
+&gt; using lightning. It actually &#34;compiles&#34; a full owl script as a single C
+&gt; callable function, uses its own stack, and does a precise mark&#38;sweep
+&gt; gc. Lightning itself can be used for either, as it only provides a kind of
+&gt; portable, minimal assembly.
+
+Nice.
+
+&gt; &gt; [...]
+&gt; &gt;
+&gt; &gt;&gt;   My interest is in  writing a managed language with dynamic typing,
+&gt; &gt;&gt; and static typing for faster execution. But porting to gcc jit should not
+&gt; &gt;&gt; be much different from the initial code I am writing, mainly to exercise
+&gt; &gt;&gt; lightning, that would &#34;optimize&#34; when types are know, check for overflow
+&gt; &gt;&gt; when it can happen and otherwise fallback to calling functions to
+&gt; &gt;&gt; implement the vm primitives.
+&gt; &gt;
+&gt; &gt; BTW, does lightning support self-modifying code?   &#40;e.g. for doing
+&gt; &gt; inline caching of attribute lookup&#41;.
+&gt; 
+&gt;   No. Lightning does mmap memory for the jit, attempting to waste as
+&gt; few as possible memory, and after code generation it does mprotect
+&gt; it removing write permission. Also does some voodoo for architectures
+&gt; that need complex sequences to flush the code cache; currently
+&gt; it requires gcc as the compiler, but libgcc __clear_cache does not
+&gt; work on all ports.
+
+Thanks.
+
+FWIW one other approach I&#39;ve seen is to mmap an anonymous fd twice, once
+as writable, once as executable, giving the same underlying pages in two
+different locations in the address space.   IIRC libffi uses this when
+constructing wrappers to sidestep SELinux&#39;s restrictions on having pages
+that are both writable and executable.   &#40;I don&#39;t think that it has a
+cache-flushing mechanism, since it has clearly separated phases of
+&#34;write,  then execute&#34;&#41;.
+
+</pre>
+  <h2>Re: GCC JIT vs others JIT ....</h2>
+  <a href="https://gcc.gnu.org/ml/jit/2013-q4/msg00040.html">https://gcc.gnu.org/ml/jit/2013-q4/msg00040.html</a>
+  <p>
+   <em>From</em>
+   <i>Paulo César Pereira de Andrade &lt;paulo.cesar.pereira.de.andrade@gmail.com&gt;</i>
+  </p>
+  <pre>On Wed, 2013-10-23 at 13:22 -0200, Paulo CÃsar Pereira de Andrade wrote:
+
+Hi Paulo
+
+&gt; 2013/10/22 Basile Starynkevitch &lt;basile@starynkevitch.net&gt;:
+&gt; &gt; Hello David Malcom and all,
+&gt; &gt;
+&gt; &gt; I am trying to understand what are the conceptual differences between
+&gt; &gt; GCC JIT &#40;when it will be mature enough&#41; and other JIT libraries like GNU
+&gt; &gt; lightning  or LLVM
+&gt; &gt;  or GNU libjit  from
+&gt; &gt; the point of view of the developer using the JIT library.
+&gt; &gt;
+&gt; &gt; GNU lightning is probably much lower level than GCC JIT. It probably has
+&gt; &gt; the advantage of generating quickly rather slow machine code. It mostly
+&gt; &gt; gives a small set of register like variables.
+&gt; 
+&gt;   GNU lightning does not use abstract &#34;values&#34;, that may be either a
+&gt; register or an immediate, it is required to explicitly state if the argument
+&gt; is a register or an immediate, e.g. jit_addr&#40;JIT_R0, JIT_R1, JIT_R2&#41;
+&gt; and jit_addi&#40;JIT_R0, JIT_R1, 2&#41;. When using immediates, they are
+&gt; always the last argument.
+&gt; 
+&gt;   GNU lightning major limitations are:
+&gt; o Can call varargs but does not create varargs jit functions
+&gt; o No dynamic alloca
+&gt; o No aggregate arguments/return by value
+&gt; 
+&gt;   The major advantages are:
+&gt; o Self contained, but binutils support is advised otherwise without
+&gt;   disassembly, debugging may be quite difficult.
+&gt; o Tailored for operations that need to know if there is overflow/carry
+&gt;   and have the values ready &#40;carry/borrow only need to know about,
+&gt;   but multiplication high word and division remainder are quite useful&#41;.
+
+...and I&#39;m fairly sure that your code has a *much* lower overhead than
+mine &#40;but improving GCC&#39;s startup time feels like an interesting
+challenge&#41;.
+
+&gt;   For starters, I would suggest looking at lightning&#39;s check/*.tst files,
+&gt; for an overview of how to generate code. For example, bp.tst for
+&gt; the classic recursive Fibonacci and fib.tst for the interactive one.
+&gt; Other tests may be complex due to using the C preprocessor to
+&gt; generate complex macros to brute force test all/most register/value
+&gt; combinations.
+
+Thanks.  Looks like the tests use an assembler-like syntax, which I&#39;m
+guessing gets parsed by a test harness.
+
+&gt;   A more complex, still WIP, use case example of lightning is
+&gt;  &#40;lib/oemit*c files are the lightning
+&gt; interfaces&#41;
+
+Thanks for the link &#40;and indeed for the work on the code&#41;
+
+&gt;   Well, enough GNU lightning advertising :-&#41;
+
+:-&#41;
+
+Cheers
+Dave
+
+</pre>
+ </body>
+</html>
